@@ -1,0 +1,39 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.suo.user
+publish/
+
+# Visual Studio
+.vs/
+*.userprefs
+*.pidb
+*.booproj
+
+# Rider
+.idea/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NuGet
+*.nupkg
+**/packages/*
+
+# Visual Studio cache/options
+.sln.ide/
+*.cache
+*.project
