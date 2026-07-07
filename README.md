@@ -82,14 +82,6 @@ ProgramLauncher/
 
 MIT License — свободное использование с указанием авторства.
 
-## 🤝 Вклад
-
-1. Fork репозитория
-2. Создайте ветку (`git checkout -b feature/AmazingFeature`)
-3. Commit изменений (`git commit -m 'Add AmazingFeature'`)
-4. Push в ветку (`git push origin feature/AmazingFeature`)
-5. Откройте Pull Request
-
 ## 📧 Контакты
 
 GitHub Issues — для багов и предложений.
