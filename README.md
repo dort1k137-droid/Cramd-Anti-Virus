@@ -85,6 +85,7 @@ MIT License — свободное использование с указани�
 ## 📧 Контакты
 
 GitHub Issues — для багов и предложений.
+discord: dort1k. с точкой
 
 ---
 **Cramd Anti-Virus** © 2026
