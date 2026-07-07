@@ -5,6 +5,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using ProgramLauncher.Models;
+using ProgramLauncher.Services;
 
 namespace ProgramLauncher;
 
@@ -15,6 +17,14 @@ public partial class Form1 : Form
     private IntPtr _originalParent = IntPtr.Zero;
     private bool _isDarkTheme = true;
     private System.Windows.Forms.Timer? _processMonitorTimer;
+
+    // Настройки мониторинга
+    private bool _monitorProcesses = true;
+    private bool _monitorFiles = true;
+    private bool _monitorRegistry = true;
+    private bool _monitorNetwork = true;
+    private bool _monitorDlls = true;
+    private bool _monitorMemory = true;
 
     // --- База "чёрных" хешей (примеры) ---
     private static readonly HashSet<string> BlacklistedHashes = new(StringComparer.OrdinalIgnoreCase)
@@ -615,29 +625,28 @@ public partial class Form1 : Form
     //  UI ОБРАБОТЧИКИ
     // ==========================================
 
-    // --- Выбор программы ---
-    private void BtnBrowse_Click(object? sender, EventArgs e)
+    // --- Выбор файла для анализа/запуска ---
+    private void BtnSelectFile_Click(object? sender, EventArgs e)
     {
         using var dlg = new OpenFileDialog
         {
             Filter = "Исполняемые файлы (*.exe)|*.exe|Все файлы (*.*)|*.*",
-            Title = "Выберите программу для запуска"
+            Title = "Выберите программу для анализа или запуска"
         };
 
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            txtPath.Text = dlg.FileName;
-            lblScanStatus.Text = "Файл выбран — нажмите «Запустить» для сканирования";
-            lblScanStatus.ForeColor = Color.Yellow;
+            lblSelectedFile.Text = dlg.FileName;
+            lblSelectedFile.ForeColor = Color.FromArgb(0, 120, 215);
         }
     }
 
     // --- Запуск и встраивание ---
     private void BtnLaunch_Click(object? sender, EventArgs e)
     {
-        string exePath = txtPath.Text.Trim();
+        string exePath = lblSelectedFile.Text.Trim();
 
-        if (string.IsNullOrEmpty(exePath))
+        if (string.IsNullOrEmpty(exePath) || exePath == "Файл не выбран")
         {
             MessageBox.Show("Сначала выберите программу.", "Внимание",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -804,7 +813,7 @@ public partial class Form1 : Form
         style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
         SetWindowLong(hWnd, GWL_STYLE, style);
 
-        SetParent(hWnd, panelHost.Handle);
+        SetParent(hWnd, panelSafeHost.Handle);
         ShowWindow(hWnd, SW_SHOWMAXIMIZED);
         FitToPanel();
     }
@@ -812,7 +821,7 @@ public partial class Form1 : Form
     private void FitToPanel()
     {
         if (_embeddedHandle == IntPtr.Zero) return;
-        MoveWindow(_embeddedHandle, 0, 0, panelHost.ClientSize.Width, panelHost.ClientSize.Height, true);
+        MoveWindow(_embeddedHandle, 0, 0, panelSafeHost.ClientSize.Width, panelSafeHost.ClientSize.Height, true);
     }
 
     private void PanelHost_Resize(object? sender, EventArgs e)
@@ -877,45 +886,93 @@ public partial class Form1 : Form
         if (settings.ShowDialog(this) == DialogResult.OK)
         {
             _isDarkTheme = settings.IsDarkTheme;
+            _monitorProcesses = settings.MonitorProcesses;
+            _monitorFiles = settings.MonitorFiles;
+            _monitorRegistry = settings.MonitorRegistry;
+            _monitorNetwork = settings.MonitorNetwork;
+            _monitorDlls = settings.MonitorDlls;
+            _monitorMemory = settings.MonitorMemory;
             ApplyTheme();
             LogInfo(_isDarkTheme ? "🌙 Тёмная тема применена" : "☀️ Светлая тема применена");
+            LogDetail($"Мониторинг: P={_monitorProcesses} F={_monitorFiles} R={_monitorRegistry} N={_monitorNetwork} D={_monitorDlls} M={_monitorMemory}");
         }
     }
 
     private void ApplyTheme()
     {
+        Color bgMain, bgPanel, bgInput, textMain, textDim, accent, logBg, logFg, bottomBar;
+        
         if (_isDarkTheme)
         {
-            panelTop.BackColor = Color.FromArgb(30, 30, 40);
-            txtPath.BackColor = Color.FromArgb(50, 50, 60);
-            txtPath.ForeColor = Color.White;
-            btnBrowse.BackColor = Color.FromArgb(50, 50, 70);
-            btnBrowse.ForeColor = Color.White;
-            panelLogs.BackColor = Color.FromArgb(15, 15, 20);
-            txtLogs.BackColor = Color.FromArgb(15, 15, 20);
-            txtLogs.ForeColor = Color.Lime;
-            panelBottomBar.BackColor = Color.FromArgb(25, 25, 35);
-            pbSettings.Image = CreateSettingsIconDark();
-            lblScanStatus.ForeColor = Color.Lime;
-
-            LogDetail("🎨 Тёмная тема применена");
+            bgMain = Color.FromArgb(25, 25, 35);
+            bgPanel = Color.FromArgb(30, 30, 40);
+            bgInput = Color.FromArgb(50, 50, 60);
+            textMain = Color.White;
+            textDim = Color.LightGray;
+            accent = Color.FromArgb(0, 180, 255);
+            logBg = Color.FromArgb(15, 15, 25);
+            logFg = Color.Lime;
+            bottomBar = Color.FromArgb(20, 20, 30);
         }
         else
         {
-            panelTop.BackColor = Color.FromArgb(255, 255, 255);
-            txtPath.BackColor = Color.White;
-            txtPath.ForeColor = Color.Black;
-            btnBrowse.BackColor = Color.FromArgb(240, 240, 245);
-            btnBrowse.ForeColor = Color.FromArgb(50, 50, 60);
-            panelLogs.BackColor = Color.FromArgb(30, 30, 40);
-            txtLogs.BackColor = Color.FromArgb(30, 30, 40);
-            txtLogs.ForeColor = Color.FromArgb(0, 200, 150);
-            panelBottomBar.BackColor = Color.FromArgb(245, 245, 245);
-            pbSettings.Image = CreateSettingsIcon();
-            lblScanStatus.ForeColor = Color.FromArgb(0, 150, 255);
-
-            LogDetail("🎨 Светлая тема применена");
+            bgMain = Color.FromArgb(245, 245, 250);
+            bgPanel = Color.White;
+            bgInput = Color.White;
+            textMain = Color.FromArgb(30, 30, 40);
+            textDim = Color.DimGray;
+            accent = Color.FromArgb(0, 120, 215);
+            logBg = Color.FromArgb(30, 30, 40);
+            logFg = Color.FromArgb(0, 200, 150);
+            bottomBar = Color.FromArgb(240, 240, 245);
         }
+        
+        // Основная форма
+        BackColor = bgMain;
+        ForeColor = textMain;
+        
+        // Вкладки
+        tabControl.BackColor = bgPanel;
+        tabControl.ForeColor = textMain;
+        foreach (TabPage tab in tabControl.Controls)
+        {
+            tab.BackColor = bgPanel;
+            tab.ForeColor = textMain;
+        }
+        
+        // Сканер
+        lblScanStatus.ForeColor = accent;
+        lblScanResult.ForeColor = textMain;
+        
+        // Безопасный анализ
+        panelSafeHost.BackColor = bgMain;
+        lblIllustration.ForeColor = textDim;
+        lblSelectedFile.ForeColor = textDim;
+        lblSafeAnalysisDesc.ForeColor = textDim;
+        if (_isDarkTheme)
+        {
+            btnSelectFile.BackColor = Color.FromArgb(0, 120, 215);
+            btnSelectFile.ForeColor = Color.White;
+            btnStartSafeAnalysis.BackColor = Color.FromArgb(76, 175, 80);
+            btnStartSafeAnalysis.ForeColor = Color.White;
+            btnLaunch.BackColor = Color.FromArgb(0, 120, 215);
+            btnLaunch.ForeColor = Color.White;
+            btnClose.BackColor = Color.FromArgb(220, 50, 50);
+            btnClose.ForeColor = Color.White;
+            btnScanFolder.BackColor = Color.FromArgb(0, 120, 215);
+            btnScanDisk.BackColor = Color.FromArgb(0, 150, 100);
+        }
+        
+        // Логи
+        panelLogs.BackColor = logBg;
+        txtLogs.BackColor = logBg;
+        txtLogs.ForeColor = logFg;
+        
+        // Нижняя панель
+        panelBottomBar.BackColor = bottomBar;
+        pbSettings.Image = _isDarkTheme ? CreateSettingsIconDark() : CreateSettingsIcon();
+        
+        LogDetail(_isDarkTheme ? "🎨 Тёмная тема применена" : "🎨 Светлая тема применена");
     }
 
     private Image CreateSettingsIconDark()
@@ -942,7 +999,10 @@ public partial class Form1 : Form
     {
         if (cmbDrives.SelectedIndex >= 0)
         {
-            string drive = cmbDrives.SelectedItem.ToString()!.Split(' ')[0];
+            // Извлекаем букву диска (C:\) из строки "C:\ (10ГБ/100ГБ)"
+            string selectedItem = cmbDrives.SelectedItem.ToString()!;
+            string drive = selectedItem.Substring(0, 3); // "C:\"
+            LogInfo($"Начало сканирования диска: {drive}");
             await ScanDirectory(drive);
         }
     }
@@ -952,39 +1012,60 @@ public partial class Form1 : Form
         UpdateIllustration("scanning");
         lblScanResult.Text = $"Сканирование: {path}\n";
         progressScan.Value = 0;
+        progressScan.Style = ProgressBarStyle.Marquee;
         
         int totalFiles = 0;
         int threatCount = 0;
         int cleanCount = 0;
+        int errorCount = 0;
         
         try
         {
-            var files = Directory.GetFiles(path, "*.exe", SearchOption.AllDirectories);
-            totalFiles = files.Length;
-            progressScan.Maximum = totalFiles;
+            // Сначала считаем файлы (с игнорированием ошибок доступа)
+            LogProcess($"⏳ Подсчёт файлов на диске {path}...");
+            var files = GetFilesSafe(path, "*.exe");
+            totalFiles = files.Count;
+            progressScan.Style = ProgressBarStyle.Continuous;
+            progressScan.Maximum = totalFiles > 0 ? totalFiles : 1;
 
-            for (int i = 0; i < files.Length; i++)
+            LogInfo($"Найдено {totalFiles} EXE файлов для проверки");
+
+            for (int i = 0; i < files.Count; i++)
             {
                 var file = files[i];
-                var result = ScanFile(file);
-                
-                if (!result.IsClean)
+                try
                 {
-                    threatCount++;
-                    lblScanResult.Text += $"🚫 УГРОЗА: {file} ({result.ThreatLevel})\n";
+                    var result = ScanFile(file);
+                    
+                    if (!result.IsClean)
+                    {
+                        threatCount++;
+                        lblScanResult.Text = $"🚫 УГРОЗА: {file} ({result.ThreatLevel})\n" + lblScanResult.Text;
+                    }
+                    else
+                    {
+                        cleanCount++;
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    cleanCount++;
+                    errorCount++;
+                    LogDetail($"⚠️ Ошибка проверки {file}: {ex.Message}");
                 }
                 
-                progressScan.Value = i + 1;
+                progressScan.Value = Math.Min(i + 1, progressScan.Maximum);
                 
+                // Обновляем UI каждые 10 файлов
                 if (i % 10 == 0)
                 {
                     await Task.Delay(1);
-                    lblScanResult.Text = $"Сканирование: {path}\nНайдено: {totalFiles} файлов | Чистых: {cleanCount} | Угроз: {threatCount}\n\nПоследние результаты:\n" + 
-                        lblScanResult.Text.Split('\n').Take(10).Aggregate((a, b) => a + "\n" + b);
+                    lblScanResult.Text = $"Сканирование: {path}\n" +
+                        $"Обработано: {i + 1}/{totalFiles} | " +
+                        $"✅ Чистых: {cleanCount} | " +
+                        $"🚫 Угроз: {threatCount} | " +
+                        $"⚠️ Ошибок: {errorCount}\n\n" +
+                        $"Последние угрозы:\n" +
+                        lblScanResult.Text.Split('\n').Take(8).Aggregate((a, b) => a + "\n" + b);
                 }
             }
 
@@ -995,6 +1076,7 @@ public partial class Form1 : Form
             lblScanResult.Text += $"Всего файлов: {totalFiles}\n";
             lblScanResult.Text += $"✅ Чистых: {cleanCount}\n";
             lblScanResult.Text += $"🚫 Угроз: {threatCount}\n";
+            lblScanResult.Text += $"⚠️ Ошибок доступа: {errorCount}\n";
             lblScanResult.Text += $"═══════════════════════════════════════\n";
             
             if (threatCount > 0)
@@ -1010,10 +1092,67 @@ public partial class Form1 : Form
         }
         catch (Exception ex)
         {
-            lblScanResult.Text += $"\n❌ Ошибка: {ex.Message}";
+            lblScanResult.Text += $"\n❌ Критическая ошибка: {ex.Message}";
             LogError($"Ошибка сканирования: {ex.Message}");
         }
         
         UpdateIllustration("idle");
+    }
+
+    /// <summary>
+    /// Безопасное получение списка файлов с игнорированием ошибок доступа
+    /// </summary>
+    private List<string> GetFilesSafe(string path, string pattern)
+    {
+        var files = new List<string>();
+        
+        try
+        {
+            // Пробуем получить файлы из текущей папки
+            try
+            {
+                files.AddRange(Directory.GetFiles(path, pattern));
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (IOException) { }
+            
+            // Рекурсивно обходим подпапки
+            string[] directories;
+            try
+            {
+                directories = Directory.GetDirectories(path);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return files;
+            }
+            catch (IOException)
+            {
+                return files;
+            }
+
+            foreach (var dir in directories)
+            {
+                try
+                {
+                    files.AddRange(GetFilesSafe(dir, pattern));
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (IOException) { }
+            }
+        }
+        catch { }
+        
+        return files;
+    }
+
+    // ==========================================
+    //  БЕЗОПАСНЫЙ АНАЛИЗ
+    // ==========================================
+    private void BtnStartSafeAnalysis_Click(object? sender, EventArgs e)
+    {
+        var analysisForm = new SafeAnalysisForm();
+        analysisForm.SetTheme(_isDarkTheme);
+        analysisForm.ShowDialog(this);
     }
 }

@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Cramd-Anti-Virus</AssemblyName>
+    <RootNamespace>ProgramLauncher</RootNamespace>
+    <Product>Cramd Anti-Virus</Product>
   </PropertyGroup>
 
 </Project>
